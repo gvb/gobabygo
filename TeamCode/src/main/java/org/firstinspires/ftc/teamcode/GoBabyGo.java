@@ -11,8 +11,8 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.TouchSensor;
 import com.qualcomm.robotcore.util.Range;
 
-import org.firstinspires.ftc.robotcore.internal.AppUtil;
-import org.firstinspires.ftc.robotcore.internal.UILocation;
+//import org.firstinspires.ftc.robotcore.internal.AppUtil;
+//import org.firstinspires.ftc.robotcore.internal.UILocation;
 
 @TeleOp(name = "Go Baby Go!")
 public class GoBabyGo extends OpMode {
@@ -33,14 +33,16 @@ public class GoBabyGo extends OpMode {
     boolean active = false;
     boolean override = true;
 
-    private double speedLimit = 0.8;
+    private double speedLimit = 1.0;
+    private long accelTime = 1000;   // 0-speedLimit acceleration time, mSec
     private double steerMax = 0.3;
 
     private boolean henryToasted = false;
     private boolean overrideToasted = false;
 
     public void init() {
-        AppUtil.getInstance().showToast(UILocation.BOTH, "Press \"Start\" + \"A\" to activate.");
+        telemetry.addLine("Press \"Start\" + \"A\" to activate.");
+//        AppUtil.getInstance().showToast(UILocation.BOTH, "Press \"Start\" + \"A\" to activate.");
 
         leftDrive = hardwareMap.dcMotor.get("lD");
         rightDrive = hardwareMap.dcMotor.get("rD");
@@ -56,7 +58,7 @@ public class GoBabyGo extends OpMode {
         yMax = yAxis.getMaxVoltage();
 
         active = true;
-        monitor = new SpeedMonitor(leftDrive, rightDrive, 3000);
+        monitor = new SpeedMonitor(leftDrive, rightDrive, accelTime);
         monitor.start();
     }
 
@@ -68,7 +70,8 @@ public class GoBabyGo extends OpMode {
             steer = -gamepad1.right_stick_x;
 
             if (!overrideToasted) {
-                AppUtil.getInstance().showToast(UILocation.BOTH, "User Override!\nPress \"A\" to give control to Henry");
+//                AppUtil.getInstance().showToast(UILocation.BOTH, "User Override!\nPress \"A\" to give control to Henry");
+                telemetry.addLine("User Override!\nPress \"A\" to give control to Henry");
                 overrideToasted = true;
                 henryToasted = false;
             }
@@ -80,7 +83,8 @@ public class GoBabyGo extends OpMode {
             speed = Range.scale(xAxis.getVoltage() / xMax, 1.0, 0.0, speedLimit, -speedLimit);
             steer = Range.scale(yAxis.getVoltage() / yMax, 0.0, 1.0, -steerMax, steerMax);
             if (!henryToasted) {
-                AppUtil.getInstance().showToast(UILocation.BOTH, "Henry's in control!\nPress \"B\" to take control");
+//                AppUtil.getInstance().showToast(UILocation.BOTH, "Henry's in control!\nPress \"B\" to take control");
+                telemetry.addLine("Henry's in control!\nPress \"B\" to take control");
                 henryToasted = true;
                 overrideToasted = false;
             }
