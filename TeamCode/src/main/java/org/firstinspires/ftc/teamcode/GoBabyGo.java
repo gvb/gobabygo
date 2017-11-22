@@ -42,6 +42,7 @@ public class GoBabyGo extends OpMode {
 
     public void init() {
         telemetry.addLine("Press \"Start\" + \"A\" to activate.");
+        telemetry.update();
 //        AppUtil.getInstance().showToast(UILocation.BOTH, "Press \"Start\" + \"A\" to activate.");
 
         leftDrive = hardwareMap.dcMotor.get("lD");
@@ -72,6 +73,7 @@ public class GoBabyGo extends OpMode {
             if (!overrideToasted) {
 //                AppUtil.getInstance().showToast(UILocation.BOTH, "User Override!\nPress \"A\" to give control to Henry");
                 telemetry.addLine("User Override!\nPress \"A\" to give control to Henry");
+                telemetry.update();
                 overrideToasted = true;
                 henryToasted = false;
             }
@@ -85,6 +87,7 @@ public class GoBabyGo extends OpMode {
             if (!henryToasted) {
 //                AppUtil.getInstance().showToast(UILocation.BOTH, "Henry's in control!\nPress \"B\" to take control");
                 telemetry.addLine("Henry's in control!\nPress \"B\" to take control");
+                telemetry.update();
                 henryToasted = true;
                 overrideToasted = false;
             }
