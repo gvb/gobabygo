@@ -16,8 +16,9 @@ import com.qualcomm.robotcore.util.Range;
 
 @TeleOp(name = "Go Baby Go!")
 public class GoBabyGo extends OpMode {
-    DcMotor leftDrive;
-    DcMotor rightDrive;
+    DcMotor driveRelay;     // was leftDrive in direct drive version
+    DcMotor reverseRelay;   // was rightDrive in direct drive version
+    DcMotor fastRelay;      // Slow/fast speed relay
     DcMotor steer;
 
     TouchSensor leftSteerStop;
@@ -28,26 +29,31 @@ public class GoBabyGo extends OpMode {
     double xMax;
     double yMax;
 
-    SpeedMonitor monitor;
-
     boolean active = false;
     boolean override = true;
+    boolean speedBoost = false;
+
+    private boolean localControl = false;
+    private boolean remoteControl = false;
+    private boolean goingFast = false;
+    private boolean goingSlow = false;
 
     private double speedLimit = 1.0;
     private long accelTime = 1000;   // 0-speedLimit acceleration time, mSec
     private double steerMax = 0.3;
+    private int fwdRevDelayCount = 200; // Coast this many loop()s when reversing direction
 
-    private boolean henryToasted = false;
-    private boolean overrideToasted = false;
+    private boolean drivingFwd = false;
+    private boolean drivingRev = false;
+    private int fwdRevDelay = 0;
 
     public void init() {
         telemetry.addLine("Press \"Start\" + \"A\" to activate.");
         telemetry.update();
-//        AppUtil.getInstance().showToast(UILocation.BOTH, "Press \"Start\" + \"A\" to activate.");
 
-        leftDrive = hardwareMap.dcMotor.get("lD");
-        rightDrive = hardwareMap.dcMotor.get("rD");
-        rightDrive.setDirection(DcMotorSimple.Direction.REVERSE);
+        driveRelay = hardwareMap.dcMotor.get("drive");
+        reverseRelay = hardwareMap.dcMotor.get("reverse");
+        fastRelay = hardwareMap.dcMotor.get("speed");
         steer = hardwareMap.dcMotor.get("steer");
 
         leftSteerStop = hardwareMap.touchSensor.get("lT");
@@ -58,38 +64,51 @@ public class GoBabyGo extends OpMode {
         xMax = xAxis.getMaxVoltage();
         yMax = yAxis.getMaxVoltage();
 
+        driveRelay.setPower(0.0);
+        reverseRelay.setPower(0.0);
+        fastRelay.setPower(0.0);
+
+        drivingFwd = false;
+        drivingRev = false;
+        fwdRevDelay = 0;
+
         active = true;
-        monitor = new SpeedMonitor(leftDrive, rightDrive, accelTime);
-        monitor.start();
     }
 
     public void loop() {
         double speed;
         double steer;
+
         if (override) {
             speed = -gamepad1.right_stick_y;
             steer = -gamepad1.right_stick_x;
 
-            if (!overrideToasted) {
-//                AppUtil.getInstance().showToast(UILocation.BOTH, "User Override!\nPress \"A\" to give control to Henry");
+            if (!remoteControl) {
                 telemetry.addLine("User Override!\nPress \"A\" to give control to Henry");
+                if (goingFast)
+                    telemetry.addLine("Going fast!\nPress \"X\" to go slow");
+                else
+                    telemetry.addLine("Going slow!\nPress \"Y\" to go fast");
                 telemetry.update();
-                overrideToasted = true;
-                henryToasted = false;
+                remoteControl = true;
+                localControl = false;
             }
 
             if (gamepad1.a) {
                 override = false;
             }
         } else {
-            speed = Range.scale(xAxis.getVoltage() / xMax, 1.0, 0.0, speedLimit, -speedLimit);
+            speed = Range.scale(xAxis.getVoltage() / xMax, 1.0, 0.0, 1.0, -1.0);
             steer = Range.scale(yAxis.getVoltage() / yMax, 0.0, 1.0, -steerMax, steerMax);
-            if (!henryToasted) {
-//                AppUtil.getInstance().showToast(UILocation.BOTH, "Henry's in control!\nPress \"B\" to take control");
+            if (!localControl) {
                 telemetry.addLine("Henry's in control!\nPress \"B\" to take control");
+                if (goingFast)
+                    telemetry.addLine("Going fast!\nPress \"X\" to go slow");
+                else
+                    telemetry.addLine("Going slow!\nPress \"Y\" to go fast");
                 telemetry.update();
-                henryToasted = true;
-                overrideToasted = false;
+                localControl = true;
+                remoteControl = false;
             }
 
             if (gamepad1.b) {
@@ -97,7 +116,69 @@ public class GoBabyGo extends OpMode {
             }
         }
 
-        speed = Range.clip(speed, -speedLimit, speedLimit);
+        // "X" button to go slow, "Y" button to go fast
+        if (gamepad1.x)
+        {
+            if (override)
+                telemetry.addLine("User Override!\nPress \"A\" to give control to Henry");
+            else
+                telemetry.addLine("Henry's in control!\nPress \"B\" to take control");
+            telemetry.addLine("Going slow!\nPress \"Y\" to go fast");
+            telemetry.update();
+
+            goingSlow = true;
+            goingFast = false;
+            speedBoost = false;
+        }
+        if (gamepad1.y)
+        {
+            if (override)
+                telemetry.addLine("User Override!\nPress \"A\" to give control to Henry");
+            else
+                telemetry.addLine("Henry's in control!\nPress \"B\" to take control");
+            telemetry.addLine("Going fast!\nPress \"X\" to go slow");
+            telemetry.update();
+
+            goingSlow = false;
+            goingFast = true;
+            speedBoost = true;
+        }
+
+        if (speed > 0.5) {
+            // If we were driving in reverse, coast a bit before driving forward
+            if (drivingRev && (fwdRevDelay < fwdRevDelayCount)) {
+                fwdRevDelay++;
+                driveRelay.setPower(0.0);
+            } else {
+                drivingFwd = true;
+                drivingRev = false;
+                fwdRevDelay = 0;
+                driveRelay.setPower(1.0);
+            }
+            reverseRelay.setPower(0.0); // not reverse
+            fastRelay.setPower(speedBoost ? 1.0 : 0.0);
+        } else if (speed < -0.5) {
+            // If we were driving forward, coast a bit before driving in reverse
+            if (drivingFwd && (fwdRevDelay < fwdRevDelayCount)) {
+                fwdRevDelay++;
+                driveRelay.setPower(0.0);
+            } else {
+                drivingRev = true;
+                drivingFwd = false;
+                fwdRevDelay = 0;
+                driveRelay.setPower(1.0);
+            }
+            reverseRelay.setPower(1.0); // reverse
+            fastRelay.setPower(speedBoost ? 1.0 : 0.0);
+        } else {
+            drivingRev = false;
+            drivingFwd = false;
+            fwdRevDelay = 0;
+            reverseRelay.setPower(0.0); // not reverse
+            driveRelay.setPower(0.0);   // not powered
+            fastRelay.setPower(speedBoost ? 1.0 : 0.0);
+        }
+
         if (rightSteerStop.isPressed()) {
             steer = Range.clip(steer, -steerMax, 0.0);
         } else if (leftSteerStop.isPressed()) {
@@ -108,77 +189,10 @@ public class GoBabyGo extends OpMode {
             steer = Range.clip(steer, -steerMax, steerMax);
         }
 
-        monitor.setPower(speed);
         this.steer.setPower(steer);
     }
 
     public void stop() {
         active = false;
-    }
-
-    private class SpeedMonitor implements Runnable {
-        DcMotor lD;
-        DcMotor rD;
-        Thread t;
-        double currSpeed = 0.0;
-        double targetSpeed = 0.0;
-        double diff = 0.0;
-        long zeroTo60time;
-
-        public SpeedMonitor(DcMotor lD, DcMotor rD, long zeroTo60timeMillisecondsEvenThoughMrVBDoesntWantItThatWay) {
-            this.lD = lD;
-            this.rD = rD;
-            this.lD.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-            this.rD.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-            this.zeroTo60time = zeroTo60timeMillisecondsEvenThoughMrVBDoesntWantItThatWay;
-        }
-
-        public void start() {
-            if (t == null) {
-                t = new Thread(this, "SpeedMonitorThread");
-                t.start();
-                Log.i("Thread status", String.valueOf(t.isAlive()));
-            }
-        }
-
-        public void run() {
-            while (active) {
-                double otherDiff = Math.abs(getTargetSpeed() - currSpeed);
-                if (otherDiff > 0.01) {
-                    diff = Math.abs(getTargetSpeed() - currSpeed);
-                    if (Math.abs(getTargetSpeed()) < 0.05) {
-                        lD.setPower(0.0);
-                        rD.setPower(0.0);
-                        currSpeed = 0.0;
-                    } else {
-                        if (getTargetSpeed() < currSpeed) {
-                            currSpeed -= 0.01;
-                            lD.setPower(currSpeed);
-                            rD.setPower(currSpeed);
-                        } else {
-                            currSpeed += 0.01;
-                            lD.setPower(currSpeed);
-                            rD.setPower(currSpeed);
-                        }
-                    }
-                }
-                try {
-                    Thread.sleep(zeroTo60time / 100);
-                } catch (InterruptedException e) {
-
-                }
-                Log.i("target", String.valueOf(getTargetSpeed()));
-                Log.i("current", String.valueOf(currSpeed));
-            }
-            Log.i("hi", "tag");
-        }
-
-        public synchronized double getTargetSpeed() {
-            return targetSpeed;
-        }
-
-        public synchronized void setPower(double speed) {
-            targetSpeed = speed;
-        }
     }
 }
